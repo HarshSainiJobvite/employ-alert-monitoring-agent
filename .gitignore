@@ -1,0 +1,20 @@
+# Environment variables
+.DS_Store
+.env
+.Python
+op.lupbe.LSOverride
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+# Virtual environment
+.venv/
+venv/
+# IDE
+.idea/
+.vsc.......................A.pAp.lpeADp.lpeADop.lupbelAeD
+op.lupbelAeD

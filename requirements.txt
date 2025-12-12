@@ -1,0 +1,7 @@
+langgraph
+langchain
+langchain-ibm>=0.1.0
+python-dotenv
+requests
+typing-extensions>=4.0.0
+ibm-watsonx-ai>=0.2.0
