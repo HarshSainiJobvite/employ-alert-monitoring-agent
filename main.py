@@ -21,6 +21,8 @@ def run_agent():
     initial_state: AgentState = {
         "open_incidents": None,
         "incident_count": 0,
+        "frequent_conditions": None,
+        "condition_details": None,
         "incidents_summary": None,
         "key_insights": None,
         "slack_sent": False,

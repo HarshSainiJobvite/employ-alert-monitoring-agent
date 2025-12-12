@@ -296,10 +296,13 @@ def send_notification_node(state: AgentState) -> AgentState:
     state["current_step"] = "send_notification"
 
     try:
-        incidents = state["open_incidents"] or []
-        incident_count = state["incident_count"]
-        summary = state["incidents_summary"]
-        insights = state["key_insights"] or []
+        summary = state.get("incidents_summary", "No summary available")
+        insights = state.get("key_insights") or []
+        condition_details = state.get("condition_details", {})
+
+        # Truncate summary if too long (Slack limit is 3000 chars per text block)
+        if len(summary) > 2500:
+            summary = summary[:2500] + "...\n\n_[Summary truncated due to length]_"
 
         # Format Slack message
         slack_blocks = [
@@ -307,7 +310,7 @@ def send_notification_node(state: AgentState) -> AgentState:
                 "type": "header",
                 "text": {
                     "type": "plain_text",
-                    "text": f"📊 New Relic Incidents Summary",
+                    "text": f"📊 New Relic Alert Analysis - Past 7 Days",
                     "emoji": True
                 }
             },
@@ -315,68 +318,179 @@ def send_notification_node(state: AgentState) -> AgentState:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Total Open Incidents:* {incident_count}"
+                    "text": f"*Total Conditions Analyzed:* {len(condition_details)}"
                 }
             },
             {
                 "type": "divider"
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*Executive Summary:*\n{summary}"
-                }
             }
         ]
 
-        # Add insights
+        # Add top 3 insights only (to keep message short)
         if insights:
-            insights_text = "\n".join([f"• {insight}" for insight in insights])
+            insights_text = "\n".join([f"• {insight}" for insight in insights[:3]])
             slack_blocks.append({
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Key Insights & Recommendations:*\n{insights_text}"
+                    "text": f"*Top Conditions:*\n{insights_text}"
                 }
             })
-
-        # Add top incidents (up to 10)
-        if incidents:
             slack_blocks.append({"type": "divider"})
+
+        # Add condition details with AI insights (limit to top 3 conditions)
+        for i, (cond_name, details) in enumerate(list(condition_details.items())[:3], 1):
+            alert_count = len(details.get('recent_alerts', []))
+            occurrence_count = details.get('occurrence_count', 0)
+            ai_insight = details.get('ai_insight', 'No insight available')
+
+            condition_text = (
+                f"*{i}. {cond_name}*\n"
+                f"Total Occurrences: `{occurrence_count}` | Entity: `{details.get('entity_name', 'Unknown')}`"
+            )
+
             slack_blocks.append({
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Top Incidents (showing {min(10, len(incidents))} of {len(incidents)}):*"
+                    "text": condition_text
                 }
             })
 
-            for incident in incidents[:10]:
-                priority_emoji = {
-                    "CRITICAL": "🔴",
-                    "HIGH": "🟠",
-                    "MEDIUM": "🟡",
-                    "LOW": "🟢"
-                }.get(incident.get("priority"), "⚪")
+            # Add AI-generated insight
+            slack_blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"💡 *AI Analysis:*\n{ai_insight}"
+                }
+            })
 
-                incident_text = (
-                    f"{priority_emoji} *{incident.get('title')}*\n"
-                    f"Priority: {incident.get('priority')} | "
-                    f"ID: `{incident.get('incidentId')}`\n"
-                    f"Opened: {incident.get('openedAt')}"
+            # Special handling for jhire Null Pointer Anomaly - show affected users/companies
+            if cond_name == "jhire Null Pointer Anomaly" and details.get('affected_users'):
+                affected_users = details.get('affected_users', [])
+                total_users = details.get('total_affected_users', 0)
+                companies_count = details.get('affected_companies_count', 0)
+
+                # Add summary of affected users
+                impact_text = (
+                    f"👥 *Impact Analysis:*\n"
+                    f"• Total Affected Users: `{total_users}`\n"
+                    f"• Affected Companies: `{companies_count}`\n"
+                    f"• Top Affected Users (by error count):"
                 )
 
                 slack_blocks.append({
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": incident_text
+                        "text": impact_text
                     }
                 })
 
+                # Show top 5 affected users
+                for idx, user in enumerate(affected_users[:5], 1):
+                    user_text = f"{idx}. Company: `{user['company_id']}` | Email: `{user['email']}` | Errors: *{user['error_count']}*"
+                    slack_blocks.append({
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "mrkdwn",
+                                "text": user_text
+                            }
+                        ]
+                    })
+
+                if total_users > 5:
+                    slack_blocks.append({
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "mrkdwn",
+                                "text": f"_+ {total_users - 5} more users affected_"
+                            }
+                        ]
+                    })
+
+            # Add the latest alert as an example
+            recent_alerts = details.get('recent_alerts', [])
+            if recent_alerts:
+                latest_alert = recent_alerts[0]  # Most recent
+                priority = latest_alert.get('priority', 'Unknown')
+                incident_id = latest_alert.get('incidentId', 'N/A')
+                close_cause = latest_alert.get('closeCause', 'N/A')
+                duration = latest_alert.get('durationSeconds', 0)
+
+                priority_emoji = {
+                    "critical": "🔴",
+                    "warning": "🟡",
+                    "info": "🔵"
+                }.get(str(priority).lower(), "⚪")
+
+                # Format timestamp
+                timestamp = latest_alert.get('timestamp', '')
+                if timestamp:
+                    from datetime import datetime
+                    try:
+                        dt = datetime.fromtimestamp(int(timestamp) / 1000)
+                        time_str = dt.strftime('%m/%d %H:%M')
+                    except:
+                        time_str = str(timestamp)
+                else:
+                    time_str = 'N/A'
+
+                # Format duration
+                if duration and duration > 0:
+                    if duration < 60:
+                        duration_str = f"{duration}s"
+                    elif duration < 3600:
+                        duration_str = f"{duration // 60}m"
+                    else:
+                        duration_str = f"{duration // 3600}h {(duration % 3600) // 60}m"
+                else:
+                    duration_str = "N/A"
+
+                # Get title if available
+                title = latest_alert.get('title', 'No title')
+                if len(title) > 150:
+                    title = title[:150] + "..."
+
+                example_text = (
+                    f"📌 *Latest Alert Example:*\n"
+                    f"{priority_emoji} {time_str} | Priority: `{priority}` | Duration: `{duration_str}`\n"
+                    f"Incident ID: `{incident_id}` | Close Cause: `{close_cause}`\n"
+                    f"_{title}_"
+                )
+
+                slack_blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": example_text
+                    }
+                })
+
+            # Add spacing between conditions
+            if i < min(3, len(condition_details)):
+                slack_blocks.append({"type": "divider"})
+
+        # Add "See more" message if there are more conditions
+        if len(condition_details) > 3:
+            slack_blocks.append({
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"_+ {len(condition_details) - 3} more conditions analyzed_"
+                    }
+                ]
+            })
+
         # Add timestamp
         from datetime import datetime
+        slack_blocks.append({
+            "type": "divider"
+        })
         slack_blocks.append({
             "type": "context",
             "elements": [
@@ -387,7 +501,48 @@ def send_notification_node(state: AgentState) -> AgentState:
             ]
         })
 
+        # Check block count (Slack limit is 50 blocks)
+        if len(slack_blocks) > 50:
+            print(f"⚠️  Message has {len(slack_blocks)} blocks, truncating to 50")
+            slack_blocks = slack_blocks[:49]  # Leave room for truncation message
+            slack_blocks.append({
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "_[Message truncated due to Slack block limit]_"
+                    }
+                ]
+            })
+
+        # TESTING MODE: Print to logs instead of sending to Slack
+        print("\n" + "="*80)
+        print("📨 SLACK NOTIFICATION PREVIEW")
+        print("="*80)
+
+        # Pretty print the message content
+        for block in slack_blocks:
+            if block.get("type") == "header":
+                print(f"\n{'='*80}")
+                print(f"HEADER: {block['text']['text']}")
+                print(f"{'='*80}")
+            elif block.get("type") == "section":
+                text = block.get("text", {}).get("text", "")
+                print(f"\n{text}")
+            elif block.get("type") == "divider":
+                print(f"\n{'-'*80}")
+            elif block.get("type") == "context":
+                elements = block.get("elements", [])
+                for elem in elements:
+                    text = elem.get("text", "")
+                    print(f"\n  {text}")
+
+        print("\n" + "="*80)
+        print(f"📊 Total Blocks: {len(slack_blocks)}")
+        print("="*80 + "\n")
+
         # Send to Slack
+        print("📤 Sending to Slack...")
         success = slack_client.send_message_blocks(slack_blocks)
         state["slack_sent"] = success
 

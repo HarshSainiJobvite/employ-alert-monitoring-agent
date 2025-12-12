@@ -9,6 +9,10 @@ class AgentState(TypedDict):
     open_incidents: Optional[List[Dict[str, Any]]]
     incident_count: int
 
+    # NRQL-based frequent condition analysis
+    frequent_conditions: Optional[List[Dict[str, Any]]]
+    condition_details: Optional[Dict[str, Dict[str, Any]]]
+
     # AI Summary
     incidents_summary: Optional[str]
     key_insights: Optional[List[str]]

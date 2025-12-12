@@ -2,10 +2,14 @@
 from typing import Callable, Dict, Any, Optional
 from agent_state import AgentState
 from agent_nodes import (
-    fetch_incidents_node,
-    summarize_incidents_node,
     send_notification_node,
     end_node
+)
+from nrql_nodes import (
+    fetch_frequent_conditions_node,
+    fetch_condition_details_node,
+    fetch_null_pointer_details_node,
+    summarize_conditions_node
 )
 
 
@@ -77,7 +81,7 @@ class SimpleWorkflow:
 
 def create_agent_graph():
     """
-    Create and configure the workflow for incident summarization.
+    Create and configure the workflow for frequent condition analysis.
 
     Returns:
         Configured SimpleWorkflow
@@ -85,14 +89,16 @@ def create_agent_graph():
     # Initialize the workflow
     workflow = SimpleWorkflow()
 
-    # Add nodes
-    workflow.add_node("fetch_incidents", fetch_incidents_node)
-    workflow.add_node("summarize_incidents", summarize_incidents_node)
+    # Add nodes for NRQL-based analysis
+    workflow.add_node("fetch_frequent_conditions", fetch_frequent_conditions_node)
+    workflow.add_node("fetch_condition_details", fetch_condition_details_node)
+    workflow.add_node("fetch_null_pointer_details", fetch_null_pointer_details_node)
+    workflow.add_node("summarize_conditions", summarize_conditions_node)
     workflow.add_node("send_notification", send_notification_node)
     workflow.add_node("end", end_node)
 
     # Set entry point
-    workflow.set_entry_point("fetch_incidents")
+    workflow.set_entry_point("fetch_frequent_conditions")
 
     return workflow
 
@@ -102,12 +108,16 @@ def visualize_graph():
     Generate a text representation of the workflow.
     """
     print("="*60)
-    print("WORKFLOW GRAPH")
+    print("WORKFLOW GRAPH - NRQL Frequent Condition Analysis")
     print("="*60)
     print()
-    print("fetch_incidents")
+    print("fetch_frequent_conditions")
     print("    ↓")
-    print("summarize_incidents")
+    print("fetch_condition_details")
+    print("    ↓")
+    print("fetch_null_pointer_details (conditional)")
+    print("    ↓")
+    print("summarize_conditions")
     print("    ↓")
     print("send_notification")
     print("    ↓")
