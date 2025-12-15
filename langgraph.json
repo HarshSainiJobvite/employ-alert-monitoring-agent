@@ -1,0 +1,16 @@
+{
+  "$schema": "https://langchain-ai.github.io/langgraph/schema.json",
+  "graphs": {
+    "alert_agent": {
+      "path": "./agent_graph.py:create_agent_graph",
+      "description": "New Relic Alert Monitoring Agent - Analyzes alerts and sends Slack notifications"
+    }
+  },
+  "env": ".env",
+  "python_version": "3.11",
+  "dependencies": [
+    "requirements.txt"
+  ],
+  "dockerfile_lines": []
+}
+

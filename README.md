@@ -3,7 +3,7 @@
 An intelligent agent that monitors New Relic alerts via API polling, performs NRQL queries, analyzes error patterns using AI, and sends actionable notifications to Slack.
 
 ## 🚀 Quick Start
-
+cd /Users/HarshSaini_1/Code/employ-alert-monitoring-agent && source .venv/bin/activate && langgraph dev
 ```bash
 # 1. Configure your API keys
 cd /Users/HarshSaini_1/Code/untitled

@@ -1,5 +1,6 @@
-"""Simple state machine workflow for New Relic Alert Agent (Python 3.8 compatible)."""
-from typing import Callable, Dict, Any, Optional
+"""LangGraph workflow for New Relic Alert Agent."""
+from typing import Literal
+from langgraph.graph import StateGraph, END
 from agent_state import AgentState
 from agent_nodes import (
     send_notification_node,
@@ -13,81 +14,50 @@ from nrql_nodes import (
 )
 
 
-class SimpleWorkflow:
+def route_after_fetch_conditions(state: AgentState) -> Literal["fetch_condition_details", "end"]:
+    """Route after fetching frequent conditions."""
+    if state.get("frequent_conditions"):
+        return "fetch_condition_details"
+    return "end"
+
+
+def route_after_condition_details(state: AgentState) -> Literal["fetch_null_pointer_details", "summarize_conditions"]:
+    """Route after fetching condition details - check if we need null pointer details."""
+    # Check if any condition is related to NullPointerException
+    conditions = state.get("frequent_conditions", [])
+    for cond in conditions:
+        name = cond.get("conditionName", "").lower()
+        if "nullpointer" in name or "null" in name:
+            return "fetch_null_pointer_details"
+    return "summarize_conditions"
+
+
+def route_after_null_pointer(state: AgentState) -> Literal["summarize_conditions"]:
+    """Route after null pointer details."""
+    return "summarize_conditions"
+
+
+def route_after_summarize(state: AgentState) -> Literal["send_notification", "end"]:
+    """Route after summarizing conditions."""
+    if state.get("incidents_summary"):
+        return "send_notification"
+    return "end"
+
+
+def route_after_notification(state: AgentState) -> Literal["end"]:
+    """Route after sending notification."""
+    return "end"
+
+
+def create_agent_graph() -> StateGraph:
     """
-    A simple state machine workflow implementation that replaces LangGraph.
-    Compatible with Python 3.8+.
-    """
-
-    def __init__(self):
-        self.nodes: Dict[str, Callable] = {}
-        self.entry_point: Optional[str] = None
-
-    def add_node(self, name: str, func: Callable):
-        """Add a node to the workflow."""
-        self.nodes[name] = func
-
-    def set_entry_point(self, name: str):
-        """Set the entry point for the workflow."""
-        self.entry_point = name
-
-    def invoke(self, initial_state: AgentState) -> AgentState:
-        """
-        Execute the workflow starting from the entry point.
-
-        Args:
-            initial_state: Initial state
-
-        Returns:
-            Final state after execution
-        """
-        if not self.entry_point:
-            raise ValueError("Entry point not set")
-
-        state = initial_state
-        current_node = self.entry_point
-
-        # Execute nodes in sequence based on next_step
-        max_iterations = 20  # Safety limit
-        iteration = 0
-
-        while current_node and iteration < max_iterations:
-            if current_node not in self.nodes:
-                print(f"⚠️  Node '{current_node}' not found, ending workflow")
-                break
-
-            # Execute current node
-            node_func = self.nodes[current_node]
-            state = node_func(state)
-
-            # Determine next node
-            next_step = state.get("next_step")
-
-            if next_step == "end" or next_step is None:
-                # Execute end node
-                if "end" in self.nodes:
-                    state = self.nodes["end"](state)
-                break
-
-            current_node = next_step
-            iteration += 1
-
-        if iteration >= max_iterations:
-            print("⚠️  Max iterations reached, ending workflow")
-            state["errors"].append("Max iterations reached")
-
-        return state
-
-
-def create_agent_graph():
-    """
-    Create and configure the workflow for frequent condition analysis.
+    Create and configure the LangGraph workflow for frequent condition analysis.
 
     Returns:
-        Configured SimpleWorkflow
+        Compiled StateGraph
     """
-    # Initialize the workflow
-    workflow = SimpleWorkflow()
+    # Initialize the workflow with state schema
+    workflow = StateGraph(AgentState)
 
     # Add nodes for NRQL-based analysis
     workflow.add_node("fetch_frequent_conditions", fetch_frequent_conditions_node)
@@ -100,7 +70,41 @@ def create_agent_graph():
     # Set entry point
     workflow.set_entry_point("fetch_frequent_conditions")
 
-    return workflow
+    # Add conditional edges
+    workflow.add_conditional_edges(
+        "fetch_frequent_conditions",
+        route_after_fetch_conditions,
+        {
+            "fetch_condition_details": "fetch_condition_details",
+            "end": "end"
+        }
+    )
+
+    workflow.add_conditional_edges(
+        "fetch_condition_details",
+        route_after_condition_details,
+        {
+            "fetch_null_pointer_details": "fetch_null_pointer_details",
+            "summarize_conditions": "summarize_conditions"
+        }
+    )
+
+    workflow.add_edge("fetch_null_pointer_details", "summarize_conditions")
+
+    workflow.add_conditional_edges(
+        "summarize_conditions",
+        route_after_summarize,
+        {
+            "send_notification": "send_notification",
+            "end": "end"
+        }
+    )
+
+    workflow.add_edge("send_notification", "end")
+    workflow.add_edge("end", END)
+
+    # Compile and return
+    return workflow.compile()
 
 
 def visualize_graph():

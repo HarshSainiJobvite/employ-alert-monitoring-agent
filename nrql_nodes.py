@@ -9,7 +9,7 @@ from langchain_ibm import WatsonxLLM
 
 # Initialize WatsonX LLM for summarization
 llm = WatsonxLLM(
-    model_id="ibm/granite-3-8b-instruct",
+    model_id="ibm/granite-4-h-small",
     url=Config.WATSONX_URL,
     apikey=Config.WATSONX_APIKEY,
     project_id=Config.WATSONX_PROJECT_ID,
