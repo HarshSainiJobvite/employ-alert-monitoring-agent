@@ -5,6 +5,7 @@ from agent_state import AgentState
 from alert_poller import create_poller
 from slack_client import SlackClient
 from config import Config
+from condition_docs_mapping import get_condition_documentation, has_documentation
 
 
 # Initialize clients
@@ -310,7 +311,7 @@ def send_notification_node(state: AgentState) -> AgentState:
                 "type": "header",
                 "text": {
                     "type": "plain_text",
-                    "text": f"📊 New Relic Alert Analysis - Past 7 Days",
+                    "text": f"📊 New Relic Alert Analysis - jhire Application Tier (Past 7 Days)",
                     "emoji": True
                 }
             },
@@ -318,7 +319,7 @@ def send_notification_node(state: AgentState) -> AgentState:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Total Conditions Analyzed:* {len(condition_details)}"
+                    "text": f"*Application:* jhire\n*Total Conditions Analyzed:* {len(condition_details)}"
                 }
             },
             {
@@ -343,6 +344,7 @@ def send_notification_node(state: AgentState) -> AgentState:
             alert_count = len(details.get('recent_alerts', []))
             occurrence_count = details.get('occurrence_count', 0)
             ai_insight = details.get('ai_insight', 'No insight available')
+            condition_id = details.get('condition_id')
 
             condition_text = (
                 f"*{i}. {cond_name}*\n"
@@ -356,6 +358,24 @@ def send_notification_node(state: AgentState) -> AgentState:
                     "text": condition_text
                 }
             })
+
+            # Check if documentation exists for this condition
+            if condition_id and has_documentation(condition_id):
+                doc_info = get_condition_documentation(condition_id)
+                doc_url = doc_info.get('doc_url', '')
+                doc_title = doc_info.get('doc_title', 'View Documentation')
+
+                # Add documentation link as an accessory button
+                slack_blocks[-1]["accessory"] = {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "📚 Documentation",
+                        "emoji": True
+                    },
+                    "url": doc_url,
+                    "action_id": f"doc_button_{condition_id}"
+                }
 
             # Add AI-generated insight
             slack_blocks.append({
